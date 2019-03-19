@@ -22,7 +22,6 @@ class Dogs(Dataset):
     def __init__(self,
                  labelFile,
                  imageLoc,
-
                  size,
                  transform=None,
                  preload=False):
@@ -93,7 +92,7 @@ class Dogs(Dataset):
 
 trainset = Dogs(
     '/home/dore/Downloads/dog-breed-identification/labels.csv', '/home/dore/Downloads/dog-breed-identification/train/',
-    28, preload=False, transform=transforms.ToTensor(),
+    128, preload=False, transform=transforms.ToTensor(),
 )
 # Use the torch dataloader to iterate through the dataset
 trainset_loader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=1)
@@ -133,26 +132,31 @@ class Net(nn.Module):
     More Info @ https://pytorch.org/docs/stable/nn.html#torch.nn.Linear
 
     """
-    def __init__(self):
+    def __init__(self, lastLayer, size):
+        firstLayer = 3  # RGB
+        self.size = size
         super(Net, self).__init__()  # to init the nn.Module super class.
-        self.conv1 = nn.Conv2d(3, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv1 = nn.Conv2d(firstLayer, 5, kernel_size=5)  # (size - 4) * (size - 4) * 5
+        self.conv2 = nn.Conv2d(5, 10, kernel_size=3)  # (size - 2) * (size - 2) * 10
+        self.conv3 = nn.Conv2d(10, 20, kernel_size=3)  # (size - 2) * (size - 2) * 20
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 200)
-        self.fc2 = nn.Linear(200, 120)
+        self.fc1 = nn.Linear(280, 180)
+        self.fc2 = nn.Linear(180, lastLayer)
 
     def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))  # IN: size * size * 3. OUT: (size - 4)/2 * (size - 4)/2 * 5
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))  # IN: size * size * 5. OUT: (size - 2)/2 * (size - 2)/2 * 10
+        x = F.relu(F.max_pool2d(self.conv3(x), 2))  # IN: size * size * 10. OUT: (size - 2)/2 * (size - 2)/2 * 20
+        x = x.view(-1, 280)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
 
-model = Net().to(device)
+model = Net(120, 128).to(device)
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+
 
 def train(epoch, print_interval=100):
     model.train()  # set training mode
@@ -171,5 +175,5 @@ def train(epoch, print_interval=100):
                     100. * batch_idx / len(trainset_loader), loss.item()))
             iteration += 1
 
-
-train(2)
+for name, param in checkpoint['state_dict'].items():
+train(5)
