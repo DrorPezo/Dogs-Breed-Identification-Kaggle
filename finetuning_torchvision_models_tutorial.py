@@ -40,15 +40,13 @@ Finetuning Torchvision Models
 # -  Run the training step
 # 
 
-from __future__ import print_function 
-from __future__ import division
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
-import matplotlib.pyplot as plt
 import time
 import os
 import copy
@@ -88,19 +86,19 @@ print("Torchvision Version: ",torchvision.__version__)
 
 # Top level data directory. Here we assume the format of the directory conforms 
 #   to the ImageFolder structure
-data_dir = "/home/dore/Downloads/dog-breed-identification"
+data_dir = "/home/dore/Downloads/dog-breed-identification/sort/"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "squeezenet"
+model_name = "vgg"
 
 # Number of classes in the dataset
 num_classes = 120
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 8
+batch_size = 64
 
 # Number of epochs to train for 
-num_epochs = 15
+num_epochs = 20
 
 # Flag for feature extracting. When False, we finetune the whole model, 
 #   when True we only update the reshaped layer params
@@ -589,61 +587,3 @@ criterion = nn.CrossEntropyLoss()
 
 # Train and evaluate
 model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name=="inception"))
-
-
-######################################################################
-# Comparison with Model Trained from Scratch
-# ------------------------------------------
-# 
-# Just for fun, lets see how the model learns if we do not use transfer
-# learning. The performance of finetuning vs. feature extracting depends
-# largely on the dataset but in general both transfer learning methods
-# produce favorable results in terms of training time and overall accuracy
-# versus a model trained from scratch.
-# 
-
-# Initialize the non-pretrained version of the model used for this run
-scratch_model,_ = initialize_model(model_name, num_classes, feature_extract=False, use_pretrained=False)
-scratch_model = scratch_model.to(device)
-scratch_optimizer = optim.SGD(scratch_model.parameters(), lr=0.001, momentum=0.9)
-scratch_criterion = nn.CrossEntropyLoss()
-_,scratch_hist = train_model(scratch_model, dataloaders_dict, scratch_criterion, scratch_optimizer, num_epochs=num_epochs, is_inception=(model_name=="inception"))
-
-# Plot the training curves of validation accuracy vs. number 
-#  of training epochs for the transfer learning method and
-#  the model trained from scratch
-ohist = []
-shist = []
-
-ohist = [h.cpu().numpy() for h in hist]
-shist = [h.cpu().numpy() for h in scratch_hist]
-
-plt.title("Validation Accuracy vs. Number of Training Epochs")
-plt.xlabel("Training Epochs")
-plt.ylabel("Validation Accuracy")
-plt.plot(range(1,num_epochs+1),ohist,label="Pretrained")
-plt.plot(range(1,num_epochs+1),shist,label="Scratch")
-plt.ylim((0,1.))
-plt.xticks(np.arange(1, num_epochs+1, 1.0))
-plt.legend()
-plt.show()
-
-
-######################################################################
-# Final Thoughts and Where to Go Next
-# -----------------------------------
-# 
-# Try running some of the other models and see how good the accuracy gets.
-# Also, notice that feature extracting takes less time because in the
-# backward pass we do not have to calculate most of the gradients. There
-# are many places to go from here. You could:
-# 
-# -  Run this code with a harder dataset and see some more benefits of
-#    transfer learning
-# -  Using the methods described here, use transfer learning to update a
-#    different model, perhaps in a new domain (i.e. NLP, audio, etc.)
-# -  Once you are happy with a model, you can export it as an ONNX model,
-#    or trace it using the hybrid frontend for more speed and optimization
-#    opportunities.
-# 
-
