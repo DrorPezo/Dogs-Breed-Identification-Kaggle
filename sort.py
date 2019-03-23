@@ -5,15 +5,15 @@ import os
 
 labelFile = '/home/dore/Downloads/dog-breed-identification/labels.csv'
 imageLoc = '/home/dore/Downloads/dog-breed-identification/train/'
-train = '/home/dore/Downloads/dog-breed-identification/new_train/'
-val = '/home/dore/Downloads/dog-breed-identification/new_val/'
+train = '/home/dore/Downloads/dog-breed-identification/sort/train/'
+val = '/home/dore/Downloads/dog-breed-identification/sort/val/'
 
 
 with open(labelFile, newline='') as csvfile:
     labels = csv.reader(csvfile)
     iterLabel = iter(labels)
     next(iterLabel)  # do not include the header
-    trainVal = 0.05
+    trainVal = 0.1
 
     interval = 0
     for row in iterLabel:
@@ -26,5 +26,3 @@ with open(labelFile, newline='') as csvfile:
                 os.makedirs(train + row[1])
             copy(imageLoc + row[0] + '.jpg', train + row[1])
         interval += 1
-
-    print(interval)

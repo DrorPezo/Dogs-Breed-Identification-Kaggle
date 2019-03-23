@@ -40,7 +40,10 @@ Finetuning Torchvision Models
 # -  Run the training step
 # 
 
+<<<<<<< HEAD
 import csv
+=======
+>>>>>>> adc94a477f6583475d00f533df3d48e29eb546b7
 
 import torch
 import torch.nn as nn
@@ -48,7 +51,6 @@ import torch.optim as optim
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
-import matplotlib.pyplot as plt
 import time
 import os
 import copy
@@ -88,19 +90,19 @@ print("Torchvision Version: ",torchvision.__version__)
 
 # Top level data directory. Here we assume the format of the directory conforms 
 #   to the ImageFolder structure
-data_dir = "/home/dore/Downloads/dog-breed-identification"
+data_dir = "/home/dore/Downloads/dog-breed-identification/sort/"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "squeezenet"
+model_name = "vgg"
 
 # Number of classes in the dataset
 num_classes = 120
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 8
+batch_size = 64
 
 # Number of epochs to train for 
-num_epochs = 4
+num_epochs = 20
 
 # Flag for feature extracting. When False, we finetune the whole model, 
 #   when True we only update the reshaped layer params
