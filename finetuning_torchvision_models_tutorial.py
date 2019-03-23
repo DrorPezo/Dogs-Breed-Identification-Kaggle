@@ -40,8 +40,8 @@ Finetuning Torchvision Models
 # -  Run the training step
 # 
 
-from __future__ import print_function 
-from __future__ import division
+import csv
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -100,7 +100,7 @@ num_classes = 120
 batch_size = 8
 
 # Number of epochs to train for 
-num_epochs = 15
+num_epochs = 4
 
 # Flag for feature extracting. When False, we finetune the whole model, 
 #   when True we only update the reshaped layer params
@@ -190,6 +190,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
+
 
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
@@ -514,6 +515,12 @@ data_transforms = {
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
+    'test': transforms.Compose([
+        transforms.Resize(input_size),
+        transforms.CenterCrop(input_size),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
 }
 
 print("Initializing Datasets and Dataloaders...")
@@ -559,7 +566,7 @@ params_to_update = model_ft.parameters()
 print("Params to learn:")
 if feature_extract:
     params_to_update = []
-    for name,param in model_ft.named_parameters():
+    for name, param in model_ft.named_parameters():
         if param.requires_grad == True:
             params_to_update.append(param)
             print("\t",name)
@@ -590,60 +597,38 @@ criterion = nn.CrossEntropyLoss()
 # Train and evaluate
 model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name=="inception"))
 
+def testToCsv(model, test_dir, csv_dir, class2idx):
+    images = datasets.ImageFolder(test_dir, data_transforms['test'])
+    image_names = [x[0] for x in images.imgs]
+    dataloader = torch.utils.data.DataLoader(images, batch_size=batch_size, shuffle=False, num_workers=3)
 
-######################################################################
-# Comparison with Model Trained from Scratch
-# ------------------------------------------
-# 
-# Just for fun, lets see how the model learns if we do not use transfer
-# learning. The performance of finetuning vs. feature extracting depends
-# largely on the dataset but in general both transfer learning methods
-# produce favorable results in terms of training time and overall accuracy
-# versus a model trained from scratch.
-# 
+    model.eval()  # Set model to evaluate mode
 
-# Initialize the non-pretrained version of the model used for this run
-scratch_model,_ = initialize_model(model_name, num_classes, feature_extract=False, use_pretrained=False)
-scratch_model = scratch_model.to(device)
-scratch_optimizer = optim.SGD(scratch_model.parameters(), lr=0.001, momentum=0.9)
-scratch_criterion = nn.CrossEntropyLoss()
-_,scratch_hist = train_model(scratch_model, dataloaders_dict, scratch_criterion, scratch_optimizer, num_epochs=num_epochs, is_inception=(model_name=="inception"))
+    num_images = 0
+    with open(csv_dir, mode='w') as testCsv:
+        csv_writer = csv.writer(testCsv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        firstRow = ['id']
+        for name in class2idx:
+            firstRow.append(name)
+        csv_writer.writerow(firstRow)
+        # Iterate over data.
+        for inputs, _ in dataloader:
+            inputs = inputs.to(device)
 
-# Plot the training curves of validation accuracy vs. number 
-#  of training epochs for the transfer learning method and
-#  the model trained from scratch
-ohist = []
-shist = []
+            with torch.no_grad():
+                logits = model(inputs)
+                _, preds = torch.max(logits, 1)
+                batch_len = len(preds)
+                for i, fname in enumerate(image_names[num_images:(num_images + batch_len)]):
+                    norm = np.empty(len(logits[i]))
+                    fileNameExt = os.path.basename(fname)
+                    fileName, _ = os.path.splitext(fileNameExt)
+                    for idx in range(len(logits[i])):
+                        norm[idx] = logits[i, idx].to("cpu").detach().numpy() / sum(logits[i].to("cpu").detach().numpy())
+                        # write to csv
+                    strNorm = np.array([str(x) for x in norm])
+                    csvRow = np.concatenate((np.array([fileName]), strNorm))
+                    csv_writer.writerow(csvRow)
+                num_images += batch_len
 
-ohist = [h.cpu().numpy() for h in hist]
-shist = [h.cpu().numpy() for h in scratch_hist]
-
-plt.title("Validation Accuracy vs. Number of Training Epochs")
-plt.xlabel("Training Epochs")
-plt.ylabel("Validation Accuracy")
-plt.plot(range(1,num_epochs+1),ohist,label="Pretrained")
-plt.plot(range(1,num_epochs+1),shist,label="Scratch")
-plt.ylim((0,1.))
-plt.xticks(np.arange(1, num_epochs+1, 1.0))
-plt.legend()
-plt.show()
-
-
-######################################################################
-# Final Thoughts and Where to Go Next
-# -----------------------------------
-# 
-# Try running some of the other models and see how good the accuracy gets.
-# Also, notice that feature extracting takes less time because in the
-# backward pass we do not have to calculate most of the gradients. There
-# are many places to go from here. You could:
-# 
-# -  Run this code with a harder dataset and see some more benefits of
-#    transfer learning
-# -  Using the methods described here, use transfer learning to update a
-#    different model, perhaps in a new domain (i.e. NLP, audio, etc.)
-# -  Once you are happy with a model, you can export it as an ONNX model,
-#    or trace it using the hybrid frontend for more speed and optimization
-#    opportunities.
-# 
-
+testToCsv(model_ft, "/home/dore/Downloads/dog-breed-identification/test1", "/home/dore/Downloads/dog-breed-identification/results.csv", image_datasets['train'].class_to_idx)
