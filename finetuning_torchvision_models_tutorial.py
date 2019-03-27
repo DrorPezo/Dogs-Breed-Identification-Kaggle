@@ -38,12 +38,9 @@ Finetuning Torchvision Models
 # -  Define for the optimization algorithm which parameters we want to
 #    update during training
 # -  Run the training step
-# 
-
-<<<<<<< HEAD
+#
 import csv
-=======
->>>>>>> adc94a477f6583475d00f533df3d48e29eb546b7
+
 
 import torch
 import torch.nn as nn
@@ -90,7 +87,7 @@ print("Torchvision Version: ",torchvision.__version__)
 
 # Top level data directory. Here we assume the format of the directory conforms 
 #   to the ImageFolder structure
-data_dir = "/home/dore/Downloads/dog-breed-identification/sort/"
+data_dir = "/home/dore/Documents/dog-breed-identification/sort"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "vgg"
@@ -102,7 +99,7 @@ num_classes = 120
 batch_size = 64
 
 # Number of epochs to train for 
-num_epochs = 20
+num_epochs = 6
 
 # Flag for feature extracting. When False, we finetune the whole model, 
 #   when True we only update the reshaped layer params
@@ -441,7 +438,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
     elif model_name == "vgg":
         """ VGG11_bn
         """
-        model_ft = models.vgg11_bn(pretrained=use_pretrained)
+        model_ft = models.vgg16(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier[6].in_features
         model_ft.classifier[6] = nn.Linear(num_ftrs,num_classes)
@@ -459,7 +456,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
     elif model_name == "densenet":
         """ Densenet
         """
-        model_ft = models.densenet121(pretrained=use_pretrained)
+        model_ft = models.densenet161(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier.in_features
         model_ft.classifier = nn.Linear(num_ftrs, num_classes) 
@@ -578,8 +575,9 @@ else:
             print("\t",name)
 
 # Observe that all parameters are being optimized
-optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
+#optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
 
+optimizer_ft = optim.Adam(params_to_update, lr=0.0001)
 
 ######################################################################
 # Run Training and Validation Step
@@ -622,15 +620,23 @@ def testToCsv(model, test_dir, csv_dir, class2idx):
                 _, preds = torch.max(logits, 1)
                 batch_len = len(preds)
                 for i, fname in enumerate(image_names[num_images:(num_images + batch_len)]):
-                    norm = np.empty(len(logits[i]))
                     fileNameExt = os.path.basename(fname)
                     fileName, _ = os.path.splitext(fileNameExt)
-                    for idx in range(len(logits[i])):
-                        norm[idx] = logits[i, idx].to("cpu").detach().numpy() / sum(logits[i].to("cpu").detach().numpy())
-                        # write to csv
+                    norm = np.exp(logits[i].cpu().detach().numpy()) / np.sum(np.exp(logits[i].cpu().detach().numpy()), axis=0)
                     strNorm = np.array([str(x) for x in norm])
                     csvRow = np.concatenate((np.array([fileName]), strNorm))
                     csv_writer.writerow(csvRow)
                 num_images += batch_len
 
-testToCsv(model_ft, "/home/dore/Downloads/dog-breed-identification/test1", "/home/dore/Downloads/dog-breed-identification/results.csv", image_datasets['train'].class_to_idx)
+def saveModel(model, path):
+    torch.save(model, path)
+
+def loadModel(path):
+    model = torch.load(path)
+    model.eval()
+    return model
+
+saveModel(model_ft, '/home/dore/Documents/dog-breed-identification/models/'+str(model_name)+".pth")
+#model_ft = loadModel('/home/dore/Documents/dog-breed-identification/models/'+str(model_name)+".pth")
+
+testToCsv(model_ft, "/home/dore/Documents/dog-breed-identification/test1", "/home/dore/Documents/dog-breed-identification/results.csv", image_datasets['train'].class_to_idx)
