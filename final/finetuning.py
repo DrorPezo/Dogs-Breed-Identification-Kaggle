@@ -3,6 +3,7 @@ Finetuning Torchvision Models
 =============================
 
 **Original Author:** `Nathan Inkawhich <https://github.com/inkawhich>`
+**Updated Version Author:** `Dore Kleinstern <https://github.com/dore42>`
 
 """
 
@@ -17,8 +18,6 @@ import time
 import os
 import copy
 import csv
-from shutil import copy
-from pathlib import Path
 
 
 class FineTuning():
@@ -55,13 +54,44 @@ class FineTuning():
 
         # Initialize the model for this run
         self._initialize_model()
-        
+
+        # Data augmentation and normalization for training
+        # Just normalization for validation and testing
+        self.data_transforms = {
+            'train': transforms.Compose([
+                transforms.RandomResizedCrop(self.input_size),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+            'val': transforms.Compose([
+                transforms.Resize(self.input_size),
+                transforms.CenterCrop(self.input_size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+            'test': transforms.Compose([
+                transforms.Resize(self.input_size),
+                transforms.CenterCrop(self.input_size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
+
+        # Create training and validation datasets
+        self.image_datasets = {x: datasets.ImageFolder(os.path.join(self.root + self.train_var, x), self.data_transforms[x]) for x in
+                          ['train', 'val']}
+        # Create training and validation dataloaders
+        self.dataloaders_dict = {
+            x: torch.utils.data.DataLoader(self.image_datasets[x], batch_size=self.batch_size, shuffle=True, num_workers=4) \
+                for x in ['train', 'val']}
+
         # Detect if we have a GPU available
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         # Send the model to GPU
         self.model = self.model.to(self.device)
-        
+
         if feature_extract:
             self.params_to_update = []
             for _, param in self.model.named_parameters():
@@ -89,7 +119,7 @@ class FineTuning():
             self.model = models.resnet18(pretrained=self.use_pretrained)
             self._set_parameter_requires_grad()
             num_ftrs = self.model.fc.in_features
-            self.model.fc = nn.Linear(num_ftrs, num_classes)
+            self.model.fc = nn.Linear(num_ftrs, self.num_classes)
             self.input_size = 224
 
         elif self.model_name == "alexnet":
@@ -150,39 +180,6 @@ class FineTuning():
         if self.feature_extract:
             for param in self.model.parameters():
                 param.requires_grad = False
-    
-    def _load_data(self):
-        
-        # Data augmentation and normalization for training
-        # Just normalization for validation and testing
-        self.data_transforms = {
-            'train': transforms.Compose([
-                transforms.RandomResizedCrop(self.input_size),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ]),
-            'val': transforms.Compose([
-                transforms.Resize(self.input_size),
-                transforms.CenterCrop(self.input_size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ]),
-            'test': transforms.Compose([
-                transforms.Resize(self.input_size),
-                transforms.CenterCrop(self.input_size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ]),
-        }
-
-        # Create training and validation datasets
-        self.image_datasets = {x: datasets.ImageFolder(os.path.join(self.root + self.train_var, x), self.data_transforms[x]) for x in
-                          ['train', 'val']}
-        # Create training and validation dataloaders
-        self.dataloaders_dict = {
-            x: torch.utils.data.DataLoader(self.image_datasets[x], batch_size=self.batch_size, shuffle=True, num_workers=4) \
-                for x in ['train', 'val']}
 
     def train(self, num_epochs):
         since = time.time()
@@ -243,14 +240,15 @@ class FineTuning():
                     running_loss += loss.item() * inputs.size(0)
                     running_corrects += torch.sum(preds == labels.data)
 
-                epoch_loss = running_loss / len(dataloaders[phase].dataset)
-                epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
+                epoch_loss = running_loss / len(self.dataloaders_dict[phase].dataset)
+                epoch_acc = running_corrects.double() / len(self.dataloaders_dict[phase].dataset)
 
                 print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
 
                 # deep copy the model
                 if phase == 'val' and epoch_acc > best_acc:
                     best_acc = epoch_acc
+                    best_loss = epoch_loss
                     best_model_wts = copy.deepcopy(self.model.state_dict())
                 if phase == 'val':
                     val_acc_history.append(epoch_acc)
@@ -261,6 +259,7 @@ class FineTuning():
 
         # load best model weights
         self.model.load_state_dict(best_model_wts)
+        self.best_loss = best_loss
         return val_acc_history
 
     def __get_params_to_update__(self):
@@ -307,40 +306,8 @@ class FineTuning():
                     num_images += batch_len
 
     def save_model(self, model_dir):
-        torch.save(self.model, model_dir + self.model_name + '.pth')
+        torch.save(self.model, model_dir + self.model_name + '_loss_' + str(self.best_loss) + '.pth')
 
     def load_model(self, model_file):
         self.model = torch.load(model_file)
         self.model.eval()
-    
-    def sort_kaggle(self, image_folder, label_file):
-        with open(self.root + label_file, newline='') as csvfile:
-            labels = csv.reader(csvfile)
-            iterLabel = iter(labels)
-            next(iterLabel)  # do not include the header
-            trainVal = 0.1  # Ratio between train dataset size and val dataset size
-
-            interval = 0
-            for row in iterLabel:
-                if interval % int(1/trainVal) == 0:
-                    if not os.path.exists(self.root + self.train_var + 'val/' + row[1]):
-                        os.makedirs(self.root + self.train_var + 'val/' + row[1])
-                    copy(self.root + image_folder + row[0] + '.jpg', self.root + self.train_var + 'val/' + row[1])
-                else:
-                    if not os.path.exists(self.root + self.train_var + 'train/' + row[1]):
-                        os.makedirs(self.root + self.train_var + 'train/' + row[1])
-                    copy(self.root + image_folder + row[0] + '.jpg', self.root + self.train_var + 'train/' + row[1])
-                interval += 1
-
-
-"""
-ft = FineTuning('/home/dore/Downloads/dog-breed-identification/', 'vgg', 120, 8, 'sort/')
-params = ft.__get_params_to_update__()
-optimizer = optim.Adam(params, 1e-4)
-ft.__set_optim__(optimizer)
-ft.train(20)
-ft.kaggle_csv('test1/', 'labels.csv')
-ft.save_model('/home/dore/Downloads/dog-breed-identification/')
-"""
-ft = FineTuning('/home/dore/Documents/dog-breed-identification/', 'vgg', 120, 8, 'sort/')
-ft.sort_kaggle('train/', 'labels.csv')
