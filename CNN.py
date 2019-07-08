@@ -216,4 +216,5 @@ def test():
         100. * correct / len(testset_loader.dataset)))
 
 
-train(5)
+train(20)
+test()
